@@ -220,4 +220,8 @@ __marimo__/
 *.json
 *.xml
 
-discord.log.*
+discord.log.1
+discord.log.2
+discord.log.3
+discord.log.4
+discord.log.5

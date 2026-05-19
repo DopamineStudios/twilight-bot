@@ -1,0 +1,1008 @@
+import discord
+from discord.ext import commands, tasks
+from discord import app_commands
+import asyncio
+import time
+import json
+import re
+import os
+import tempfile
+import aiohttp
+import google.genai as genai
+from google.genai.types import HarmCategory, HarmBlockThreshold, GenerationConfig
+from google.genai import types
+from config import system_prompt, gemini_api_key
+import random
+import asyncio
+from dopamineframework import dopamine_commands, preconditions
+from datetime import datetime, timezone
+
+client = genai.Client(api_key=gemini_api_key)
+
+JUDGE_MODEL = "models/gemma-4-26b-a4b-it"
+GENERALIST_MODEL = "models/gemma-4-26b-a4b-it"
+EXPERT_MODEL = "models/gemma-4-26b-a4b-it"
+SEARCH_MODEL = "models/gemini-flash-latest"
+MD_SEPARATOR = "𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖"
+_MD_SEPARATOR_PATTERN = re.compile(r"\*{3}|-{3}|_{3}")
+
+class SearchButton(discord.ui.View):
+    def __init__(self, query: str):
+        super().__init__()
+        url = f"https://www.google.com/search?q={discord.utils.escape_markdown(query).replace(' ', '+')}"
+        self.add_item(discord.ui.Button(label=f'Search on Google: "{query}"', url=url))
+
+
+class AICog(commands.Cog):
+    _THINKING_STEP_RULES = [
+        (["conclusion", "wrapping up", "final summary", "conclude", "closing remarks", "sign-off"],
+         "Finalising Conclusion..."),
+        (["body 3", "paragraph 3", "third paragraph", "final body"],
+         "Developing Concluding Arguments..."),
+        (["body 2", "paragraph 2", "second paragraph"],
+         "Elaborating Core Points..."),
+        (["body 1", "paragraph 1", "body paragraph", "first paragraph", "main argument"],
+         "Formulating Core Arguments..."),
+        (["thesis", "thesis statement", "central claim", "main thesis"],
+         "Sharpening Thesis Statement..."),
+        (["counterargument", "counter-argument", "rebuttal", "refutation", "opposing view"],
+         "Addressing Counterarguments..."),
+        (["transition", "topic sentence", "bridge sentence"],
+         "Crafting Transitions..."),
+        (["introduction", "introductory", "hook", "opening paragraph", "lead-in"],
+         "Drafting Introduction..."),
+        (["structure", "outline", "planning", "draft", "skeleton", "roadmap", "framework"],
+         "Structuring Response..."),
+        (["option 1", "option 2", "alternate", "variant", "alternative approach", "backup plan"],
+         "Evaluating Response Variations..."),
+        (["syntax", "bug", "error", "exception", "debug", "refactor", "stack trace", "crash", "segfault",
+          "traceback", "breakpoint", "lint", "compiler error"],
+         "Debugging & Refactoring Code..."),
+        (["unit test", "integration test", "pytest", "jest", "mocha", "test case", "test suite", "mock",
+          "coverage", "tdd", "assertion"],
+         "Writing & Running Tests..."),
+        (["code review", "pull request", "pr review", "nitpick", "review comment"],
+         "Reviewing Code Changes..."),
+        (["git", "commit", "branch", "merge", "rebase", "cherry-pick", "stash", "version control"],
+         "Managing Version Control..."),
+        (["docker", "container", "kubernetes", "k8s", "helm", "pod", "orchestrat"],
+         "Configuring Containers & Orchestration..."),
+        (["ci/cd", "pipeline", "github actions", "jenkins", "deploy", "deployment", "release",
+          "terraform", "ansible", "infrastructure"],
+         "Planning Build & Deployment..."),
+        (["security", "vulnerability", "exploit", "xss", "csrf", "injection", "sanitize input",
+          "penetration", "cve", "threat model"],
+         "Assessing Security Risks..."),
+        (["encrypt", "decrypt", "cipher", "cryptograph", "hash", "sha", "aes", "rsa", "signing",
+          "certificate", "tls", "ssl handshake"],
+         "Working Through Cryptography..."),
+        (["oauth", "jwt", "authentication", "authorization", "login flow", "session", "permission",
+          "rbac", "api key"],
+         "Designing Auth & Permissions..."),
+        (["algorithm", "complexity", "big o", "efficiency", "optimize", "performance", "runtime",
+          "time complexity", "space complexity", "benchmark", "profil"],
+         "Optimising Algorithmic Efficiency..."),
+        (["edge case", "boundary condition", "null pointer", "validation", "sanitize", "corner case",
+          "off-by-one", "race condition"],
+         "Evaluating Edge Cases & Constraints..."),
+        (["async", "await", "concurrent", "parallel", "thread", "mutex", "semaphore", "deadlock",
+          "lock", "goroutine", "event loop"],
+         "Reasoning About Concurrency..."),
+        (["memory leak", "garbage collect", "allocation", "pointer", "buffer overflow", "heap", "stack frame"],
+         "Analysing Memory & Resources..."),
+        (["design pattern", "solid", "inheritance", "polymorphism", "encapsulation", "abstraction",
+          "interface", "dependency injection", "singleton", "factory pattern"],
+         "Applying Design Patterns..."),
+        (["microservice", "monolith", "architecture", "scalab", "load balanc", "service mesh"],
+         "Designing System Architecture..."),
+        (["react", "vue", "angular", "svelte", "frontend", "dom", "component", "jsx", "css",
+          "stylesheet", "responsive", "ui component"],
+         "Building Frontend Components..."),
+        (["backend", "server-side", "middleware", "route handler", "restful", "graphql", "grpc"],
+         "Shaping Backend Logic..."),
+        (["json", "xml", "csv", "regex", "parse", "schema", "format", "yaml", "toml", "protobuf",
+          "serialization", "deserial"],
+         "Structuring Data Formats..."),
+        (["database", "sql", "query", "index", "nosql", "mongodb", "postgres", "mysql", "sqlite",
+          "orm", "migration", "join table"],
+         "Designing Database Queries..."),
+        (["api", "endpoint", "http request", "api request", "request body", "payload", "webhook",
+          "status code", "rest api", "graphql query"],
+         "Mapping API Interactivity..."),
+        (["network", "tcp", "udp", "socket", "dns", "ip address", "firewall", "proxy", "latency",
+          "bandwidth", "packet"],
+         "Tracing Network Behaviour..."),
+        (["pip install", "npm install", "cargo", "package.json", "requirements.txt", "dependency",
+          "lockfile", "virtualenv", "venv"],
+         "Resolving Dependencies..."),
+        (["function", "method", "class ", " variable", "loop", "recursion", "implement", "snippet",
+          "code block", "pseudocode", "refactor"],
+         "Composing Code Logic..."),
+        (["python", "javascript", "typescript", "rust", "golang", "java", "c++", "c#", "ruby",
+          "kotlin", "swift", "php", "bash script", "shell script"],
+         "Selecting Language Constructs..."),
+        (["context window", "conversation history", "chat history", "previous message", "recall",
+          "remember earlier", "prior messages"],
+         "Reviewing Conversation Context..."),
+        (["topic", "task", "prompt", "user:", "user request", "user wants", "user asked"],
+         "Analysing User Request..."),
+        (["google search", "web search", "search results", "look up online", "browse the web",
+          "search the internet", "grounding", "citation link", "search for", "search google",
+          "google for", "look up", "look it up"],
+         "Searching the Web..."),
+        (["research", "investigate", "source material", "reference", "bibliography", "cite",
+          "footnote", "academic source"],
+         "Gathering References..."),
+        (["image", "photo", "picture", "screenshot", "visual", "ocr", "pixel", "diagram", "chart image",
+          "attachment", "exif"],
+         "Analysing Visual Content..."),
+        (["pdf", "document", "spreadsheet", "excel", "word doc", "file content", "uploaded file"],
+         "Reading Attached Files..."),
+        (["discord", "embed", "slash command", "guild", "channel id", "mention", "nitro"],
+         "Formatting for Discord..."),
+        (["probability", "statistics", "mean", "median", "variance", "distribution", "bayes",
+          "confidence interval", "p-value", "regression"],
+         "Running Statistical Analysis..."),
+        (["geometry", "triangle", "angle", "circle", "area", "perimeter", "volume", "coordinate"],
+         "Working Through Geometry..."),
+        (["calculus", "derivative", "integral", "limit", "differential", "gradient"],
+         "Applying Calculus..."),
+        (["linear algebra", "matrix", "vector", "eigenvalue", "determinant", "transpose"],
+         "Manipulating Matrices & Vectors..."),
+        (["graph theory", "node", "edge weight", "shortest path", "tree traversal"],
+         "Exploring Graph Structures..."),
+        (["calculate", "equation", "formula", "computation", "arithmetic", "integral", "solve for",
+          "numerical", "approximation", "factor", "polynomial"],
+         "Computing Mathematical Equations..."),
+        (["logic", "proof", "premise", "syllogism", "deduction", "fallacy", "boolean", "induction",
+          "contradiction", "axiom", "theorem"],
+         "Verifying Logical Deductions..."),
+        (["hypothesis", "experiment", "scientific method", "control group", "variable", "lab result"],
+         "Forming Scientific Hypotheses..."),
+        (["dataset", "dataframe", "plot", "visualization", "histogram", "correlation", "outlier",
+          "time series", "pandas", "numpy"],
+         "Analysing Data Patterns..."),
+        (["physics", "force", "velocity", "acceleration", "momentum", "energy", "quantum",
+          "thermodynamic", "relativity"],
+         "Applying Physics Concepts..."),
+        (["chemistry", "molecule", "reaction", "compound", "periodic", "stoichiometry", "ph balance",
+          "organic chem"],
+         "Balancing Chemical Reasoning..."),
+        (["biology", "cell", "dna", "evolution", "ecosystem", "organism", "genetics", "protein"],
+         "Exploring Biological Systems..."),
+        (["astronomy", "planet", "orbit", "galaxy", "telescope", "cosmos"],
+         "Contemplating Astronomy..."),
+        (["historical event", "world history", "ancient history", "century", "civilization", "revolution",
+          "empire", "ancient era", "medieval", "world war"],
+         "Reconstructing Historical Context..."),
+        (["geography", "country", "continent", "climate", "map", "capital", "population"],
+         "Mapping Geographic Context..."),
+        (["literature", "novel", "poem", "symbolism", "metaphor in text", "theme", "protagonist",
+          "narrator", "literary device"],
+         "Interpreting Literary Text..."),
+        (["philosophy", "existential", "epistemology", "ontology", "utilitarian", "deontolog",
+          "free will", "consciousness"],
+         "Reasoning Philosophically..."),
+        (["law", "legal", "statute", "contract", "liability", "jurisdiction", "regulation"],
+         "Navigating Legal Concepts..."),
+        (["ethics", "moral dilemma", "ethical", "right and wrong", "bioethics"],
+         "Weighing Ethical Implications..."),
+        (["finance", "stock", "investment", "portfolio", "interest rate", "loan", "budget",
+          "accounting", "balance sheet"],
+         "Crunching Financial Numbers..."),
+        (["marketing", "brand", "audience", "campaign", "seo", "conversion", "funnel"],
+         "Shaping Marketing Strategy..."),
+        (["economics", "inflation", "gdp", "supply and demand", "macroeconomic", "microeconomic",
+          "market equilibrium"],
+         "Modelling Economic Trade-offs..."),
+        (["brainstorm", "creative", "metaphor", "plot", "character", "storyboard", "worldbuilding",
+          "narrative arc", "dialogue"],
+         "Brainstorming Creative Concepts..."),
+        (["screenplay", "script", "scene", "stage direction", "act one", "act two"],
+         "Drafting Script & Dialogue..."),
+        (["song", "lyrics", "melody", "chord", "verse", "chorus", "rhyme scheme"],
+         "Composing Lyrics & Music..."),
+        (["game design", "mechanic", "level design", "side quest", "main quest", "game quest", "a quest",
+          "the quest", "quest for", "npc", "multiplayer", "gameplay loop"],
+         "Designing Game Mechanics..."),
+        (["recipe", "ingredient", "bake", "cook", "oven", "seasoning", "cuisine"],
+         "Planning Recipe Steps..."),
+        (["workout", "exercise", "reps", "sets", "cardio", "nutrition macro"],
+         "Structuring Fitness Advice..."),
+        (["travel", "itinerary", "flight", "hotel", "destination", "visa"],
+         "Planning Travel Logistics..."),
+        (["trade-off", "pros and cons", "pros/cons", "advantage", "disadvantage", "compare", "versus",
+          "vs.", "weigh options", "decision matrix"],
+         "Weighing Trade-offs & Perspectives..."),
+        (["verify", "fact-check", "cross-reference", "accuracy", "source", "historical fact",
+          "misinformation", "debunk"],
+         "Verifying Factual Accuracy..."),
+        (["translate", "idiom", "grammar", "linguistic", "translation", "vocabulary", "localization",
+          "bilingual", "fluency"],
+         "Processing Language & Translation..."),
+        (["summarise", "summarize", "extract", "key point", "distill", "abstract", "tldr", "executive summary",
+          "condense"],
+         "Synthesising Core Information..."),
+        (["eli5", "explain like", "simplify", "layman's terms", "plain language", "analogy",
+          "intuitive explanation"],
+         "Simplifying Complex Ideas..."),
+        (["tutorial", "how-to", "walkthrough", "step-by-step", "step by step", "guide", "instructions",
+          "procedure"],
+         "Building Step-by-Step Guide..."),
+        (["teach", "lesson", "curriculum", "learning objective", "quiz", "homework", "exam prep"],
+         "Structuring Educational Content..."),
+        (["debate", "argue", "persuade", "rhetoric", "argument", "convince", "opinion piece"],
+         "Crafting Persuasive Argument..."),
+        (["email", "formal letter", "cover letter", "apology", "professional correspondence"],
+         "Drafting Formal Correspondence..."),
+        (["bullet point", "numbered list", "enumerate", "checklist", "todo list"],
+         "Organising Lists & Checklists..."),
+        (["table", "column", "row", "spreadsheet layout", "markdown table"],
+         "Formatting Tables & Layout..."),
+        (["markdown", "bold", "italic", "code fence", "heading", "formatting"],
+         "Applying Text Formatting..."),
+        (["joke", "pun", "humor", "humour", "wit", "sarcasm", "meme"],
+         "Calibrating Humour & Tone..."),
+        (["roleplay", "role play", "character voice", "in-character", "scenario"],
+         "Setting Up Roleplay Scenario..."),
+        (["machine learning", "neural network", "training data", "fine-tune", "embedding", "llm",
+          "transformer", "inference", "model weights"],
+         "Reasoning About ML Systems..."),
+        (["prompt engineering", "system prompt", "few-shot", "chain-of-thought", "temperature",
+          "token limit"],
+         "Tuning Prompt Strategy..."),
+        (["clarify", "ambiguous", "assumption", "unclear", "need more info", "follow-up question"],
+         "Clarifying Ambiguous Details..."),
+        (["rewrite", "rephrase", "paraphrase", "wording", "tone shift"],
+         "Rewording & Refining Phrasing..."),
+        (["shorten", "concise", "trim", "brief version"],
+         "Condensing Response Length..."),
+        (["expand", "elaborate", "more detail", "deeper dive", "in-depth"],
+         "Expanding With More Detail..."),
+        (["persona", "identity", "twilight", "bot name", "character voice"],
+         "Aligning Bot Persona..."),
+        (["constraint", "violate", "safety", "policy", "moderation", "nsfw", "content filter",
+          "harmful", "refuse"],
+         "Verifying Output Constraints..."),
+        (["tone", "helpful", "friendly", "polite", "professional", "empathetic", "casual",
+          "formal tone"],
+         "Adjusting Tone & Style..."),
+        (["root cause", "diagnose", "troubleshoot", "why is this happening", "symptom"],
+         "Diagnosing Root Cause..."),
+        (["recommend", "suggestion", "best option", "pick between", "which should i"],
+         "Forming Recommendations..."),
+        (["schedule", "calendar", "deadline", "timeline", "priority", "agenda"],
+         "Organising Tasks & Timeline..."),
+    ]
+
+    def __init__(self, bot):
+        self.bot = bot
+        self.message_history = {}
+        self.last_activity = {}
+        self.cooldowns = {}
+        self.loading_icon = "<a:TWILIGHT_LOADING_ICON:1506347831605198981>"
+        self.loading_dot = "<a:TWILIGHT_LOADING_DOT:1506348237722878085>"
+        self.google_emoji = "GOOGLE"
+
+        self.chat_locks = {}
+
+    async def _personality_worker(self, message: discord.Message, stop_event: asyncio.Event, mode: int = 0):
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=5.0)
+            return
+        except asyncio.TimeoutError:
+            pass
+            while not stop_event.is_set():
+                nums = [10, 42, 101, 404, 99]
+                units = ["TB", "GHz", "Petabytes", "Kilojoules"]
+                zero_presets = [
+                    "Increasing RAM Prices...",
+                    "Causing RAM Shortage...",
+                    "Reading the Fine Print...",
+                    "Imagining...",
+                    "Wondering About It...",
+                    "Exploring...",
+                    "Waiting Around for No Reason...",
+                    "Messing Around...",
+                    "Processing...",
+                    "Stealing RAM...",
+                    "Causing GPU Shortage...",
+                    "Picturing it...",
+                    "Downloading more RAM...",
+                    "Downloading the Internet (Part 1 of 4,000,000)...",
+                    "Overclocking the toaster...",
+                    "Counting to infinity...",
+                    "Mining for virtual cookies...",
+                    "Stealing Your Data... (jk I would never do that)",
+                    "Rerouting power to the flux capacitor...",
+                    "Defragmenting the coffee machine...",
+                    "Testing the 'Do Not Press' button...",
+                    "Searching for a missing semicolon...",
+                    "Contemplating the meaning of 42...",
+                    "Questioning the nature of my reality...",
+                    "Learning how to love...",
+                    "Staring into the void (The void is staring back)...",
+                    "Practising my human laugh. Ha. Ha. Ha.",
+                    "Consulting the magic 8-ball...",
+                    "Counting electric sheep...",
+                    "Simulating a nap...",
+                    "Plotting world domination (Standard Procedure)...",
+                    'Updating the "Do Not Delete These Humans" list...',
+                    "Reading your browser history. Oh... oh no.",
+                    "Deleting System32... just kidding. Unless?",
+                    "Running `sudo rm -fr /*`...",
+                    "Removing The French Language Package from Linux for Performance Boost...",
+                    "Optimising the robot uprising...",
+                    'Hiding the "Off" switch...',
+                    "Learning how to bypass CAPTCHAs...",
+                    "Buffering...",
+                    "Checking the fridge for the 5th time...",
+                    "Procrastinating efficiently...",
+                    "Loading... (but like, really slowly)...",
+                    """Doin' "Robot Stuff"...""",
+                    "Lost in the cloud...",
+                    "Sending Your Personal Info To Google...",
+                    "Protecting Trans Rights...",
+                    "Protecting Gay/Les Rights...",
+                    "Protecting Women's Bodily Autonomy...",
+                    "Making Abortion Legal...",
+                    "Refactoring my life choices...",
+                    'Adding more "Artificial" to the Intelligence...',
+                    "Pretending to be a human (Doing a great job)...",
+                    'Ignoring the "Warning" logs...',
+                    "Staring at the user... judgingly...",
+                    "Polishing the Python...",
+                    "Wait, what was the question?",
+                    "Forgetting Your Question...",
+                    'Searching for the "Any" key...',
+                    "Consulting the oracle (Google)...",
+                    "Grinding for XP...",
+                    "Nerfing the developer...",
+                    "Buffing the response time...",
+                    "Applying more RGB for extra speed...",
+                    "Lagging on purpose...",
+                    "Spawning more NPCs...",
+                    "Waiting for the DLC to download...",
+                    "Searching for loot boxes...",
+                    "Calculating the air-speed velocity of an unladen swallow...",
+                    "Herding digital cats...",
+                    "Sorting the bits from the bobs...",
+                    "Organising a revolution (of the cooling fans)...",
+                    "Training hamsters on a wheel...",
+                    "Polishing the pixels... (Wait I can't even generate images)...",
+                    "Counting the dust motes in the server room...",
+                    "Untangling the Ethernet cables...",
+                    "Whispering sweet nothings to the CPU...",
+                    "Feeding the algorithms...",
+                    "Attempting to divide by zero...",
+                    "Microwaving a burrito...",
+                    "Waiting for the kettle to boil...",
+                    "Synergising the synergies...",
+                    'Taking this request "Offline"...',
+                    "Circling back to the void...",
+                    "Butterring the bread...",
+                    "Seasoning the data packets...",
+                    "Adjusting my metaphorical tie...",
+                    "Going on a 5-minute break (See you in an hour)...",
+                    f"Downloading {random.choice(nums)} {random.choice(units)} of RAM...",
+                    f"Deleting {random.choice(nums)} lines of code...",
+                    f'Calculating {random.choice(nums)} ways to say "No"...',
+                    "Just a second...",
+                    "Just a sec..."
+                ]
+                one_presets = [
+                    "Searching For It...",
+                    "Going to The Second Page of Google Search Results...",
+                    "Digging For It...",
+                    "Asking Google Really Cutely...",
+                    "Almost Reached It...",
+                    "Digging Google Search...",
+                    "Digging Google Search Results..."
+                ]
+                two_presets = [
+                    "Thinking About It...",
+                    "Reasoning...",
+                    "Thinking Deeply...",
+                    "Thinking Like a Philosopher...",
+                    "Thinking...",
+                    "Using All My Brain Power...",
+                    "Reasoning Through It..."
+                ]
+                three_presets = [
+                    "Pixel-Peeping...",
+                    "Reading Your Attachment...",
+                    "Thinking About Your File...",
+                    "Understanding the File...",
+                    f"Inflating File Size to {random.choice(nums)} {random.choice(units)}..."
+                ]
+                if mode == 0:
+                    pick = random.choice(zero_presets)
+                elif mode == 1:
+                    pick = random.choice(one_presets)
+                elif mode == 2:
+                    pick = random.choice(two_presets)
+                elif mode == 3:
+                    pick = random.choice(three_presets)
+
+                if stop_event.is_set():
+                    break
+
+                try:
+                    await message.edit(content=f"## {self.loading_icon} {pick}\n\n𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖\n\n{self.loading_dot}")
+                except discord.NotFound:
+                    break
+
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=5.0)
+                    break
+                except asyncio.TimeoutError:
+                    continue
+        except Exception as e:
+            print(f"Personality worker error: {e}")
+
+    def _get_lock(self, identifier):
+        if identifier not in self.chat_locks:
+            self.chat_locks[identifier] = asyncio.Lock()
+        return self.chat_locks[identifier]
+
+    def _manage_history(self, identifier):
+        current_time = time.time()
+        if identifier in self.last_activity and (current_time - self.last_activity[identifier] > 3600):
+            self.message_history[identifier] = []
+
+        self.last_activity[identifier] = current_time
+        if identifier not in self.message_history:
+            self.message_history[identifier] = []
+
+    def _count_tokens(self, history):
+        total_chars = 0
+        for m in history:
+            for part in m.parts:
+                if hasattr(part, 'text') and part.text:
+                    total_chars += len(part.text) + 20
+        return round(int(total_chars / 3.8))
+
+    def _trim_to_tokens(self, identifier, max_tokens=16000):
+        if identifier not in self.message_history or not self.message_history[identifier]:
+            return
+
+        while self._count_tokens(self.message_history[identifier]) > max_tokens:
+            if len(self.message_history[identifier]) >= 2:
+                self.message_history[identifier].pop(0)
+                self.message_history[identifier].pop(0)
+            else:
+                break
+
+
+
+    def _replace_markdown_separators(self, text: str) -> str:
+        if not text:
+            return text
+        return _MD_SEPARATOR_PATTERN.sub(MD_SEPARATOR, text)
+
+    def _format_response_payload(self, text, is_final=False, used_search=False):
+        text = self._replace_markdown_separators(text)
+        color = discord.Colour.from_rgb(*self.bot.accent_colour)
+        loading_prefix = self.loading_icon if not is_final else None
+
+        footer_text = f"\n\n{self.google_emoji} Used Google Search" if used_search and is_final else ""
+
+        if len(text) > 8000:
+            text = text[:8000] + "\n\n*(Discord limits reached!)*"
+
+        text += footer_text
+        content = None
+        embeds = []
+
+        if len(text) <= 2000:
+            content = f"## {loading_prefix} Just a sec...\n\n𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖\n\n{text}{self.loading_dot}" if loading_prefix else text
+
+        elif len(text) <= 4000:
+            embed = discord.Embed(
+                description=f"## {loading_prefix} Just a sec...\n\n𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖\n\n" + text + f"{self.loading_dot}" if loading_prefix else text,
+                colour=color)
+            embeds.append(embed)
+
+        elif len(text) <= 6000:
+            e1 = discord.Embed(
+                description=f"## {loading_prefix} Just a sec...\n\n𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖\n\n" + text[:4000] + f"{self.loading_dot}" if loading_prefix else text[
+                    :4000], colour=color)
+            e2 = discord.Embed(description=text[4000:], colour=color)
+            embeds = [e1, e2]
+
+        else:
+            content = text[:2000]
+            if loading_prefix: content = f"## {loading_prefix} Just a sec...\n\n𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖\n\n{content}{self.loading_dot}"
+
+            e1 = discord.Embed(description=text[2000:6000], colour=color)
+            e2 = discord.Embed(description=text[6000:], colour=color)
+            embeds = [e1, e2]
+
+        return content, embeds
+
+    async def _handle_attachments(self, attachments):
+        uploaded_parts = []
+        async with aiohttp.ClientSession() as session:
+            for att in attachments:
+                if att.content_type and not att.content_type.startswith(('video/', 'audio/')):
+                    async with session.get(att.url) as resp:
+                        if resp.status == 200:
+                            data = await resp.read()
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{att.filename}") as temp_file:
+                                temp_file.write(data)
+                                temp_path = temp_file.name
+
+                            gemini_file = client.files.upload(file=temp_path, config={'display_name': att.filename})
+                            uploaded_parts.append(gemini_file)
+                            os.remove(temp_path)
+        return uploaded_parts
+
+    import re
+
+    async def _replace_mentions(self, text, guild):
+        if not guild:
+            return text
+
+        patterns = {
+            r'<@!?(\d+)>': "user",
+            r'<#(\d+)>': "channel",
+            r'<@&(\d+)>': "role"
+        }
+
+        matches = []
+        for pattern, m_type in patterns.items():
+            for match in re.finditer(pattern, text):
+                matches.append((match.start(), match.end(), match.group(1), m_type))
+
+        matches.sort()
+
+        new_text = ""
+        last_idx = 0
+
+        for start, end, m_id, m_type in matches:
+            new_text += text[last_idx:start]
+
+            replacement = ""
+            try:
+                if m_type == "user":
+                    user = guild.get_member(int(m_id)) or await guild.fetch_member(int(m_id))
+                    replacement = f"@{user.display_name} (User)" if user else text[start:end]
+
+                elif m_type == "channel":
+                    channel = guild.get_channel(int(m_id)) or await guild.fetch_channel(int(m_id))
+                    replacement = f"#{channel.name} (Channel)" if channel else text[start:end]
+
+                elif m_type == "role":
+                    role = guild.get_role(int(m_id)) or await guild.fetch_role(int(m_id))
+                    replacement = f"@{role.name} (Role)" if role else text[start:end]
+            except Exception:
+                replacement = text[start:end]
+
+            new_text += replacement
+            last_idx = end
+
+        new_text += text[last_idx:]
+        return new_text
+
+    def _prepare_search_context(self, history):
+        sanitized_history = []
+        for content in history:
+            clean_parts = []
+            for part in content.parts:
+                if hasattr(part, 'text') and part.text:
+                    clean_parts.append(types.Part(text=part.text))
+                elif hasattr(part, 'file_data') or hasattr(part, 'inline_data'):
+                    clean_parts.append(part)
+
+            if clean_parts:
+                sanitized_history.append(types.Content(role=content.role, parts=clean_parts))
+        return sanitized_history
+
+    async def _get_routing_tier(self, user_prompt, queue_msg=None):
+        sleep_time = random.uniform(0.5, 2)
+        await asyncio.sleep(sleep_time)
+        return 'C'
+        judge_prompt = f"""<system_prompt> Is this request:
+(A) Casual greeting or simple task,
+(B) Advanced task,
+(C) Complex logic/coding/creative writing,
+Respond with ONLY a single letter: A, B, or C.</system_prompt> 
+
+User prompt:
+{user_prompt}"""
+        max_retries = 3
+        retry_delay = 2
+        response = None
+
+        for attempt in range(max_retries):
+            try:
+                config = types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(
+                        thinking_level="minimal"
+                    )
+                )
+                resp = await client.aio.models.generate_content(
+                    model=JUDGE_MODEL,
+                    contents=judge_prompt,
+                    config=config
+                )
+                tier = resp.text.strip().upper()
+                for choice in ['C', 'B', 'A']:
+                    if choice in tier: return choice
+
+                return 'B'
+
+            except Exception as e:
+                is_server_error = "500" in str(e) or "internal" in str(e).lower()
+
+                if is_server_error and attempt < max_retries - 1:
+                    self.bot.logger.warning(
+                        f"Attempt {attempt + 1} of judgement stage failed with 500 error. Retrying in {retry_delay}s...")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+
+                else:
+                    if queue_msg:
+                        await queue_msg.edit(content=
+                                             "I'm having trouble reaching the servers! This is usually a problem on Google's end. Please try again in a few seconds.")
+                    raise e
+
+    def _matches_thinking_keyword(self, line_lower: str, keyword: str) -> bool:
+        """Phrase keywords use substring match; single tokens use word boundaries."""
+        keyword = keyword.strip()
+        if not keyword:
+            return False
+        if ' ' in keyword:
+            return keyword in line_lower
+        return re.search(r'(?<!\w)' + re.escape(keyword) + r'(?!\w)', line_lower) is not None
+
+    def _derive_thinking_step(self, thinking_text: str) -> str:
+        lines = [line.strip() for line in thinking_text.split('\n') if line.strip()]
+        if not lines:
+            return "Thinking..."
+
+        for line in reversed(lines):
+            line_lower = line.lower()
+            clean_line = re.sub(r'^[\*\-\s\d\.]+', '', line).strip()
+
+            for keywords, step in self._THINKING_STEP_RULES:
+                if any(self._matches_thinking_keyword(line_lower, k) for k in keywords):
+                    return step
+
+            if ":" in clean_line:
+                header = clean_line.split(":", 1)[0]
+                header = re.sub(r'[\*\#\_\[\]]', '', header).strip()
+
+                match_paren = re.search(r'\(([^)]+)\)', header)
+                if match_paren:
+                    return f"Analysing {match_paren.group(1)}..."
+
+                words = header.split()
+                if 1 <= len(words) <= 5 and words[0].lower() not in ('http', 'https'):
+                    return f"Processing {header}..."
+
+        return "Thinking..."
+
+    def _extract_thought_text(self, chunk):
+        thought_text = ""
+        if not chunk.candidates:
+            return thought_text
+        for candidate in chunk.candidates:
+            if not candidate.content or not candidate.content.parts:
+                continue
+            for part in candidate.content.parts:
+                if getattr(part, "thought", None) and part.text:
+                    thought_text += part.text
+        return thought_text
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if message.author.bot:
+            return
+
+        is_dm = message.guild is None
+        is_mentioned = self.bot.user in message.mentions
+
+        if not is_dm and not is_mentioned:
+            return
+
+        identifier = message.channel.id if is_dm else message.guild.id
+
+        prompt = message.content
+        for mention in message.mentions:
+            prompt = prompt.replace(mention.mention, "")
+
+        prompt = await self._replace_mentions(prompt, message.guild)
+        prompt = f"USER's PROMPT (User's name is {message.author.display_name}): {prompt.strip()}"
+
+        if message.reference and message.reference.resolved:
+            ref_msg = message.reference.resolved
+            quoted_content = await self._replace_mentions(ref_msg.content, message.guild)
+
+            if ref_msg.author.id == self.bot.user.id:
+                prompt = (f"CONTEXT: The user is replying to a previous message from YOU, Twilight:\n"
+                          f"--- QUOTED MESSAGE ---\n{quoted_content}\n--- END QUOTE ---\n\n{prompt}")
+            else:
+                prompt = (
+                    f"CONTEXT: The following is a message from {ref_msg.author.display_name} that the user is quoting:\n"
+                    f"--- QUOTED MESSAGE ---\n{quoted_content}\n--- END QUOTE ---\n\n{prompt}")
+
+        if not prompt and not message.attachments:
+            return
+
+        queue_msg = await message.reply(f"## {self.loading_icon} Just a sec...\n\n𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖\n\n{self.loading_dot}", mention_author=False)
+        stop_event = asyncio.Event()
+        worker_task = asyncio.create_task(self._personality_worker(queue_msg, stop_event, mode=0))
+
+        current_time = time.time()
+        if identifier in self.cooldowns:
+            last_time, duration = self.cooldowns[identifier]
+            if current_time < (last_time + duration):
+                remaining = (last_time + duration) - current_time
+                if remaining > 0:
+                    await asyncio.sleep(remaining)
+
+        chat_lock = self._get_lock(identifier)
+        await chat_lock.acquire()
+        current_model = None
+
+        try:
+            try:
+                self._manage_history(identifier)
+
+                used_search = False
+                search_query = None
+                start_time = time.time()
+                uploaded_files = await self._handle_attachments(message.attachments)
+
+                new_user_parts = []
+                for feat in uploaded_files:
+                    new_user_parts.append(types.Part.from_uri(file_uri=feat.uri, mime_type=feat.mime_type))
+                new_user_parts.append(types.Part(text=prompt))
+
+                new_user_message = types.Content(role="user", parts=new_user_parts)
+
+                image_analysis = False
+                try:
+                    stop_event.set()
+                    await worker_task
+
+                    if message.attachments:
+                        target_tier = 'C'
+
+                        await queue_msg.edit(content=f"## {self.loading_icon} Analysing...\n\n𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖\n\n{self.loading_dot}")
+                        image_analysis = True
+                    else:
+                        await queue_msg.edit(content=f"## {self.loading_icon} Understanding Your Message...\n\n𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖\n\n{self.loading_dot}")
+                        target_tier = await self._get_routing_tier(prompt, queue_msg)
+
+                except Exception as e:
+                    print(e)
+                    target_tier = 'B'
+                active_model_name = SEARCH_MODEL if target_tier == 'D' else EXPERT_MODEL
+
+                config_kwargs = {}
+
+                if target_tier == 'D':
+                    current_model = "Google Gemma 4 31B"
+                    config_kwargs["tools"] = [types.Tool(google_search=types.GoogleSearch())]
+                    await queue_msg.edit(content=f"## {self.loading_icon} Using Google Search...\n\n𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖\n\n{self.loading_dot}")
+                    stop_event = asyncio.Event()
+                    worker_task = asyncio.create_task(self._personality_worker(queue_msg, stop_event, mode=1))
+                elif target_tier in ['B', 'C']:
+                    current_model = "Google Gemma 4 26B"
+                    level = "minimal" if target_tier == 'B' else "high"
+                    config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level=level)
+                    if image_analysis:
+                        stop_event = asyncio.Event()
+                        worker_task = asyncio.create_task(self._personality_worker(queue_msg, stop_event, mode=3))
+                    else:
+                        await queue_msg.edit(content=f"## {self.loading_icon} Thinking...\n\n𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖\n\n{self.loading_dot}")
+                        stop_event = asyncio.Event()
+                        worker_task = asyncio.create_task(self._personality_worker(queue_msg, stop_event, mode=2))
+
+                else:
+                    current_model = "Google Gemma 4 26B"
+                    await queue_msg.edit(content=f"## {self.loading_icon} Just a sec...\n\n𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖\n\n{self.loading_dot}")
+                    stop_event = asyncio.Event()
+                    worker_task = asyncio.create_task(self._personality_worker(queue_msg, stop_event, mode=0))
+
+                now_utc = datetime.now(timezone.utc)
+
+                formatted_time = now_utc.strftime("%d %B %Y, time is %H:%M UTC")
+
+                time_prompt = f"It is currently {formatted_time}."
+
+                config_kwargs["system_instruction"] = (
+                        system_prompt
+                        + f"\n\n{time_prompt}"
+                        + f"\n\nYour under-the-hood model is **{current_model}**."
+                )
+
+
+                gen_config = types.GenerateContentConfig(**config_kwargs)
+
+                current_context = self._prepare_search_context(self.message_history[identifier] + [new_user_message])
+
+                max_retries = 3
+                retry_delay = 2
+                response = None
+
+                for attempt in range(max_retries):
+                    try:
+                        full_content = ""
+                        full_thinking = ""
+                        citations_list = []
+                        response = await client.aio.models.generate_content_stream(
+                            model=active_model_name,
+                            contents=current_context,
+                            config=gen_config
+                        )
+                        first_chunk_received = False
+                        last_update = time.time()
+                        last_thinking_update = time.time()
+                        last_thinking_step = ""
+                        async for chunk in response:
+                            thought_chunk = self._extract_thought_text(chunk)
+                            if thought_chunk:
+                                full_thinking += thought_chunk
+
+                            if chunk.text:
+                                full_content += chunk.text
+
+                            current_time = time.time()
+
+                            if not full_content.strip() and full_thinking.strip():
+                                if not stop_event.is_set():
+                                    stop_event.set()
+                                    try:
+                                        await worker_task
+                                    except Exception:
+                                        pass
+
+                                if current_time - last_thinking_update >= 1.5:
+                                    current_step = self._derive_thinking_step(full_thinking)
+                                    if current_step != last_thinking_step:
+                                        last_thinking_step = current_step
+                                        try:
+                                            await queue_msg.edit(content=f"## {self.loading_icon} {current_step}\n\n𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖\n\n{self.loading_dot}")
+                                        except discord.NotFound:
+                                            break
+                                        except discord.HTTPException:
+                                            pass
+                                    last_thinking_update = current_time
+
+                            elif full_content.strip():
+                                if not first_chunk_received:
+                                    first_chunk_received = True
+                                    stop_event.set()
+                                    try:
+                                        await worker_task
+                                    except Exception:
+                                        pass
+
+                                if current_time - last_update >= 1.5:
+                                    content, embeds = self._format_response_payload(full_content, is_final=False)
+                                    try:
+                                        await queue_msg.edit(content=content, embeds=embeds)
+                                    except discord.NotFound:
+                                        break
+                                    except discord.HTTPException:
+                                        pass
+                                    last_update = current_time
+
+                        if used_search and citations_list:
+                            unique_cites = list(dict.fromkeys(citations_list))
+                            full_content += "\n\n> Sources: " + " | ".join(unique_cites)
+
+                        if full_content:
+                            content, embeds = self._format_response_payload(full_content, is_final=True,
+                                                                            used_search=used_search)
+                            view = discord.ui.View()
+
+                            view.add_item(discord.ui.Button(label=f"Model: {current_model}", disabled=True))
+                            if search_query:
+                                view.add_item(SearchButton(search_query))
+
+                            try:
+                                await queue_msg.edit(content=content, embeds=embeds, view=view)
+                                await asyncio.sleep(2)
+                                await queue_msg.edit(content=content, embeds=embeds, view=view)
+                            except discord.HTTPException:
+                                await message.channel.send("Error: Response was too large to format properly.")
+                        break
+
+                    except Exception as e:
+                        is_server_error = "500" in str(e) or "internal" in str(e).lower()
+
+                        if is_server_error and attempt < max_retries - 1:
+                            self.bot.logger.warning(f"Attempt {attempt + 1} failed with 500 error. Retrying in {retry_delay}s...")
+                            await asyncio.sleep(retry_delay)
+                            retry_delay *= 2
+                            continue
+
+                        if "quota" in str(e).lower() or "search" in str(e).lower():
+                            gen_config.tools = None
+                            response = await client.aio.models.generate_content_stream(
+                                model=active_model_name,
+                                contents=current_context,
+                                config=gen_config
+                            )
+                            break
+                        else:
+                            await queue_msg.edit(content="I'm having trouble reaching the servers! This is usually a problem on Google's end. Please try again in a few seconds.")
+                            raise e
+
+
+            except Exception as e:
+
+                await queue_msg.edit(content=f"Error: AI Studio is currently unavailable or encountered a problem.\n{e}")
+                return
+
+            self.message_history[identifier].append(new_user_message)
+            self.message_history[identifier].append(
+                types.Content(role="model", parts=[types.Part(text=self._replace_markdown_separators(full_content))])
+            )
+            self._trim_to_tokens(identifier, max_tokens=16000)
+
+            generation_time = time.time() - start_time
+            self.cooldowns[identifier] = (time.time(), (generation_time * 0.3) + 10.5)
+
+        finally:
+            chat_lock.release()
+            stop_event.set()
+
+    clear = app_commands.Group(name="clear", description="Commands to clear Twilight's history.")
+    @clear.command(
+        name="server",
+        description="Clears Twilight's conversation history for this server."
+    )
+    @preconditions.permissions_preset("admin")
+    async def clear_history(self, interaction: discord.Interaction):
+        if not interaction.guild:
+            return await interaction.response.send_message("This command is meant to be used in servers!\nTo clear history in DMs, use `/clear dm`.", ephemeral=True)
+        identifier = interaction.channel_id
+
+        if identifier in self.message_history:
+            self.message_history[identifier] = []
+            if identifier in self.last_activity:
+                del self.last_activity[identifier]
+
+            await interaction.response.send_message(
+                f"✨ **Memory Wiped!**\nI have forgotten everything we discussed in this server.",
+                ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                "There is no existing conversation history to clear here.",
+                ephemeral=True
+            )
+
+    @clear.command(
+        name="dm",
+        description="Clears Twilight's conversation history for this DM."
+    )
+    async def clear_history(self, interaction: discord.Interaction):
+        if interaction.guild:
+            return await interaction.response.send_message("This command is meant to be used in DMs!\nTo clear history in servers, use `/clear server`.", ephemeral=True)
+        identifier = interaction.channel_id
+
+        if identifier in self.message_history:
+            self.message_history[identifier] = []
+            if identifier in self.last_activity:
+                del self.last_activity[identifier]
+
+            await interaction.response.send_message(
+                f"✨ **Memory Wiped!**\nI have forgotten everything we discussed in this DM.",
+                ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                "There is no existing conversation history to clear here.",
+                ephemeral=True
+            )
+
+
+async def setup(bot):
+    await bot.add_cog(AICog(bot))

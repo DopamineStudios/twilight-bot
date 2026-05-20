@@ -16,6 +16,8 @@ import random
 import asyncio
 from dopamineframework import dopamine_commands, preconditions
 from datetime import datetime, timezone
+from pylatexenc.latex2text import LatexNodes2Text
+import unicodeitplus
 
 client = genai.Client(api_key=gemini_api_key)
 
@@ -473,7 +475,29 @@ class AICog(commands.Cog):
             else:
                 break
 
+    def _clean_latex(self, text: str) -> str:
+        if not text:
+            return text
 
+        def process_math_match(match):
+            math_content = match.group(1)
+            try:
+                # Convert math variables and symbols to Unicode equivalents
+                return unicodeitplus.convert(math_content)
+            except Exception:
+                # Fallback to original text if unicodeitplus encounters an anomaly
+                return match.group(0)
+
+        # Step 1: Replace all closed $...$ inline math blocks
+        cleaned_text = re.sub(r'\$(.*?)\$', process_math_match, text)
+
+        # Step 2: Pass through pylatexenc to clear out structural text macros (like \textbf)
+        try:
+            cleaned_text = LatexNodes2Text().latex_to_text(cleaned_text)
+        except Exception:
+            pass  # Fallback to regex-cleaned text if parsing fails
+
+        return cleaned_text
 
     def _replace_markdown_separators(self, text: str) -> str:
         if not text:
@@ -481,6 +505,8 @@ class AICog(commands.Cog):
         return _MD_SEPARATOR_PATTERN.sub(MD_SEPARATOR, text)
 
     def _format_response_payload(self, text, is_final=False, used_search=False):
+        if is_final:
+            text = self._clean_latex(text)
         text = self._replace_markdown_separators(text)
         color = discord.Colour.from_rgb(*self.bot.accent_colour)
         loading_prefix = self.loading_icon if not is_final else None

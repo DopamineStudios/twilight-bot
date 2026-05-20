@@ -475,24 +475,34 @@ class AICog(commands.Cog):
                 break
 
     def _clean_latex(self, text: str) -> str:
-        if not text:
-            return text
+    if not text:
+        return text
 
-        def process_math_match(match):
-            math_content = match.group(1)
-            try:
-                return unicodeitplus.convert(math_content)
-            except Exception:
-                return match.group(0)
+    code_blocks = []
+    def placeholder_code(match):
+        code_blocks.append(match.group(0))
+        return f"__CODE_BLOCK_PLACEHOLDER_{len(code_blocks) - 1}__"
+    
+    protected_text = re.sub(r'```[\s\S]*?```', placeholder_code, text)
 
-        cleaned_text = re.sub(r'\$(.*?)\$', process_math_match, text)
-
+    def process_math_match(match):
+        math_content = match.group(1)
         try:
-            cleaned_text = LatexNodes2Text().latex_to_text(cleaned_text)
+            return unicodeitplus.convert(math_content)
         except Exception:
-            pass
+            return match.group(0)
 
-        return cleaned_text
+    cleaned_text = re.sub(r'\$(.*?)\$', process_math_match, protected_text)
+
+    try:
+        cleaned_text = LatexNodes2Text().latex_to_text(cleaned_text)
+    except Exception:
+        pass
+        
+    for i, block in enumerate(code_blocks):
+        cleaned_text = cleaned_text.replace(f"__CODE_BLOCK_PLACEHOLDER_{i}__", block)
+
+    return cleaned_text
 
     def _replace_markdown_separators(self, text: str) -> str:
         if not text:

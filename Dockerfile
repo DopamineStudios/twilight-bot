@@ -13,7 +13,9 @@ RUN pip install --no-cache-dir \
     dotenv \
     openai \
     dopamine-framework==2.2.2.post3 \
-    PyYAML
+    PyYAML \
+    pylatexenc \
+    unicodeitplus
 
 COPY . .
 

@@ -26,7 +26,6 @@ GENERALIST_MODEL = "models/gemma-4-26b-a4b-it"
 EXPERT_MODEL = "models/gemma-4-26b-a4b-it"
 SEARCH_MODEL = "models/gemini-flash-latest"
 MD_SEPARATOR = "𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖"
-_MD_SEPARATOR_PATTERN = re.compile(r"\*{3}|-{3}|_{3}")
 
 class SearchButton(discord.ui.View):
     def __init__(self, query: str):
@@ -482,27 +481,42 @@ class AICog(commands.Cog):
         def process_math_match(match):
             math_content = match.group(1)
             try:
-                # Convert math variables and symbols to Unicode equivalents
                 return unicodeitplus.convert(math_content)
             except Exception:
-                # Fallback to original text if unicodeitplus encounters an anomaly
                 return match.group(0)
 
-        # Step 1: Replace all closed $...$ inline math blocks
         cleaned_text = re.sub(r'\$(.*?)\$', process_math_match, text)
 
-        # Step 2: Pass through pylatexenc to clear out structural text macros (like \textbf)
         try:
             cleaned_text = LatexNodes2Text().latex_to_text(cleaned_text)
         except Exception:
-            pass  # Fallback to regex-cleaned text if parsing fails
+            pass
 
         return cleaned_text
 
     def _replace_markdown_separators(self, text: str) -> str:
         if not text:
             return text
-        return _MD_SEPARATOR_PATTERN.sub(MD_SEPARATOR, text)
+
+        lines = text.splitlines(keepends=True)
+        new_lines = []
+        n = len(lines)
+
+        sep_pattern = re.compile(r"^[ \t]*(?:\*{3,}|-{3,}|_{3,})[ \t]*\r?\n?$")
+
+        for i, line in enumerate(lines):
+            if sep_pattern.match(line):
+                prev_empty = (i == 0) or (lines[i - 1].strip() == "")
+                next_empty = (i == n - 1) or (lines[i + 1].strip() == "")
+
+                if prev_empty and next_empty:
+                    nl = "\r\n" if line.endswith("\r\n") else ("\n" if line.endswith("\n") else "")
+                    new_lines.append(MD_SEPARATOR + nl)
+                    continue
+
+            new_lines.append(line)
+
+        return "".join(new_lines)
 
     def _format_response_payload(self, text, is_final=False, used_search=False):
         if is_final:

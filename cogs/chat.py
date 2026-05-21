@@ -1013,7 +1013,7 @@ User prompt:
     async def clear_history(self, interaction: discord.Interaction):
         if not interaction.guild:
             return await interaction.response.send_message("This command is meant to be used in servers!\nTo clear history in DMs, use `/clear dm`.", ephemeral=True)
-        identifier = interaction.channel_id
+        identifier = interaction.guild_id
 
         if identifier in self.message_history:
             self.message_history[identifier] = []

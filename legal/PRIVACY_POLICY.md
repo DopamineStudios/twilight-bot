@@ -1,11 +1,7 @@
-# Privacy Policy
+# Twilight Discord Bot - Privacy Policy
 
-**Twilight Discord Bot**  
-**Operated by:** Dopamine Studios  
-**Effective date:** 19 May, 2026  
-**Last updated:** 19 May, 2026
 
----
+<sub>Last updated: 20 May, 2026</sub>
 
 ## 1. Introduction
 
@@ -109,11 +105,11 @@ You may object to processing based on legitimate interests as described in Secti
 
 We share information only as needed to run Twilight:
 
-| Recipient | Role | Relevant policies |
-|:----------|:-----|:------------------|
-| **Discord Inc.** | Messaging platform; hosts your account and messages | [Discord Privacy Policy](https://discord.com/privacy) |
+| Recipient                                           | Role | Relevant policies                                                                                                                 |
+|:----------------------------------------------------|:-----|:----------------------------------------------------------------------------------------------------------------------------------|
+| **Discord Inc.**                                    | Messaging platform; hosts your account and messages | [Discord Privacy Policy](https://discord.com/privacy)                                                                             |
 | **Google** (Google AI Studio / Gemini & Gemma APIs) | AI inference; optional **Google Search** grounding for some queries | [Google Privacy Policy](https://policies.google.com/privacy) · [Google AI / Gemini terms](https://ai.google.dev/gemini-api/terms) |
-| **Hosting / infrastructure providers** | Running the bot application | Provider-specific terms |
+| **Render (Hosting Provider)**                       | Running the bot application | [Render Privacy Policy](https://render.com/privacy)                                                                                                         |
 
 When you send a message, relevant content (including display name, message text, quotes, and attachments) may be transmitted to **Google** to generate a response. Google applies its own safety filters and retention practices.
 
@@ -199,26 +195,9 @@ We may update this Privacy Policy from time to time. We will update the “Last 
 
 **Dopamine Studios — Twilight**
 
+- Email: [hey@dopaminestudios.in](https://mailto:hey@dopaminestudios.in/)
 - Website: [https://twilight.dopaminestudios.in/](https://twilight.dopaminestudios.in/)
 - Support Discord: [https://discord.gg/xT4RVAADeU](https://discord.gg/xT4RVAADeU)
 - Source code: [https://github.com/dopaminestudios/twilight/](https://github.com/dopaminestudios/twilight/)
 
-For privacy requests, contact us through the support server or website. Please include enough information for us to locate your request (for example, Discord username and approximate date of use).
-
----
-
-## 14. Summary (plain language)
-
-| Topic | Our approach |
-|:------|:-------------|
-| **Cost** | Free to use |
-| **Chat storage** | Temporary in-memory sessions only; not permanent chat archives |
-| **Session timeout** | ~1 hour of inactivity |
-| **Server chats** | Context is per server, shared among users in that server |
-| **Selling data** | We do not sell your data |
-| **AI provider** | Google (Gemma / Gemini via Google AI Studio) |
-| **Your controls** | `/clear dm`, `/clear server`, or stop using the bot |
-
----
-
-*This Privacy Policy is provided for transparency. It is not legal advice. Consider having a qualified attorney review it for your jurisdiction, especially if you serve users in the EU/UK, California, or other regions with specific privacy laws.*
+For privacy requests, contact us through the email. Please include enough information for us to locate your request (for example, Discord username and approximate date of use).

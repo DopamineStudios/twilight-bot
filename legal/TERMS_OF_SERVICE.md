@@ -1,11 +1,6 @@
-# Terms of Service
+# Twilight Discord Bot - Terms of Service
 
-**Twilight Discord Bot**  
-**Operated by:** Dopamine Studios  
-**Effective date:** May 19, 2026  
-**Last updated:** May 19, 2026
-
----
+<sub>*Last updated: 20 May, 2026*</sub>
 
 ## 1. Agreement
 
@@ -13,7 +8,7 @@ By inviting Twilight to a Discord server, sending Twilight a direct message (DM)
 
 If you use Twilight on behalf of a Discord server, you represent that you have authority to bind that server and its administrators to these Terms.
 
-These Terms work together with our [Privacy Policy](./PRIVACY_POLICY.md). Capitalized terms not defined here have the meaning given in the Privacy Policy.
+These Terms work together with our [Privacy Policy](https://twilight.dopaminestudios.in/privacypolicy/). Capitalized terms not defined here have the meaning given in the Privacy Policy.
 
 ---
 
@@ -169,7 +164,7 @@ You agree to indemnify and hold harmless Dopamine Studios and its operators from
 
 ## 17. Changes to These Terms
 
-We may update these Terms from time to time. When we do, we will update the “Last updated” date above and, where appropriate, provide notice through the [Twilight website](https://twilight.dopaminestudios.in/), Discord support server, or other reasonable channels.
+We may update these Terms from time to time. When we do, we will update the “Last updated” date above and, where appropriate, provide notice through our email [hey@dopaminestudios.in](https://mailto:hey@dopaminestudios.in/), Discord support server, or other reasonable channels.
 
 Continued use after changes become effective constitutes acceptance of the revised Terms.
 
@@ -187,12 +182,9 @@ You agree to attempt to resolve disputes informally by contacting us first (see 
 
 **Dopamine Studios — Twilight**
 
+- Email: [hey@dopaminestudios.in](https://mailto:hey@dopaminestudios.in/)
 - Website: [https://twilight.dopaminestudios.in/](https://twilight.dopaminestudios.in/)
 - Support Discord: [https://discord.gg/xT4RVAADeU](https://discord.gg/xT4RVAADeU)
 - Source code: [https://github.com/dopaminestudios/twilight/](https://github.com/dopaminestudios/twilight/)
 
-For privacy-specific requests, see the [Privacy Policy](./PRIVACY_POLICY.md).
-
----
-
-*These Terms are provided for transparency and user protection. They are not legal advice. Consider having a qualified attorney review them for your jurisdiction before publication.*
+For privacy-specific requests, see the [Privacy Policy](https://twilight.dopaminestudios.in/privacypolicy).

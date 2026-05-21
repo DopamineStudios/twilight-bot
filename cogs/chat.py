@@ -529,9 +529,10 @@ class AICog(commands.Cog):
         return "".join(new_lines)
 
     def _format_response_payload(self, text, is_final=False, used_search=False):
+        text = self._replace_markdown_separators(text)
         if is_final:
             text = self._clean_latex(text)
-        text = self._replace_markdown_separators(text)
+
         color = discord.Colour.from_rgb(*self.bot.accent_colour)
         loading_prefix = self.loading_icon if not is_final else None
 

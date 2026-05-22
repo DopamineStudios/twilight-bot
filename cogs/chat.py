@@ -795,8 +795,10 @@ User prompt:
         current_time = time.time()
         if identifier in self.cooldowns:
             last_time, duration = self.cooldowns[identifier]
-            if current_time < (last_time + duration):
-                remaining = (last_time + duration) - current_time
+            history_len = len(self.message_history.get(identifier, []))
+            scaled_duration = duration + (history_len * 0.5) if history_len > 10 else duration
+            if current_time < (last_time + scaled_duration):
+                remaining = (last_time + scaled_duration) - current_time
                 if remaining > 0:
                     await asyncio.sleep(remaining)
 
@@ -997,7 +999,16 @@ User prompt:
                 await queue_msg.edit(content=f"""Error: Google AI Studio is currently unavailable or encountered a problem. Please try again later.\n> If the error message says "500 Internal Server Error", it is an error on our AI Provider's end i.e. Google AI Studio. Google makes this error message notoriously vague on purpose - it happens seemingly at random, and it's impossible to know what even caused it. Please re-try after a few seconds.\n\nError Message:\n```{e}```""")
                 return
 
-            self.message_history[identifier].append(new_user_message)
+            cleaned_user_parts = []
+            for part in new_user_parts:
+                if hasattr(part, 'text') and part.text:
+                    cleaned_user_parts.append(types.Part(text=part.text))
+                else:
+                    filename = getattr(part, 'display_name', 'Attachment')
+                    cleaned_user_parts.append(types.Part(text=f"*[User uploaded an image/file: {filename}]*"))
+
+            self.message_history[identifier].append(types.Content(role="user", parts=cleaned_user_parts))
+
             self.message_history[identifier].append(
                 types.Content(role="model", parts=[types.Part(text=self._replace_markdown_separators(full_content))])
             )

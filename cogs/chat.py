@@ -27,6 +27,10 @@ GENERALIST_MODEL = "models/gemma-4-26b-a4b-it"
 EXPERT_MODEL = "models/gemma-4-26b-a4b-it"
 SEARCH_MODEL = "models/gemma-4-31b-it"
 MD_SEPARATOR = "𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖"
+MEDIA_REGEX = re.compile(
+    r'(https?://\S+\.(?:png|jpg|jpeg|gif|webp|mp4|webm))',
+    re.IGNORECASE
+)
 
 class SearchButton(discord.ui.View):
     def __init__(self, query: str):
@@ -610,6 +614,43 @@ class AICog(commands.Cog):
                                     os.remove(temp_path)
         return uploaded_parts
 
+    async def _handle_remote_links(self, message: discord.Message):
+        uploaded_parts = []
+        links = MEDIA_REGEX.findall(message.content)
+
+        if not links:
+            return uploaded_parts
+
+        async with aiohttp.ClientSession() as session:
+            for url in links:
+                try:
+                    async with session.get(url, timeout=10) as resp:
+                        if resp.status == 200:
+                            data = await resp.read()
+                            content_type = resp.content_type
+
+                            if not content_type:
+                                content_type = mimetypes.guess_type(url)[0] or "application/octet-stream"
+
+                            with tempfile.NamedTemporaryFile(delete=False,
+                                                             suffix=f"_{url.split('/')[-1]}") as temp_file:
+                                temp_file.write(data)
+                                temp_path = temp_file.name
+
+                            try:
+                                gemini_file = client.files.upload(
+                                    file=temp_path,
+                                    config={'display_name': url.split('/')[-1], 'mime_type': content_type}
+                                )
+                                uploaded_parts.append(gemini_file)
+                            finally:
+                                if os.path.exists(temp_path):
+                                    os.remove(temp_path)
+                except Exception as e:
+                    print(f"Failed to download remote media {url}: {e}")
+
+        return uploaded_parts
+
     async def _replace_mentions(self, text, guild):
         if not guild:
             return text
@@ -836,10 +877,16 @@ User prompt:
                 start_time = time.time()
                 uploaded_files = await self._handle_attachments(message.attachments)
 
+                remote_files = await self._handle_remote_links(message)
+
+                all_media = uploaded_files + remote_files
+
                 new_user_parts = []
-                for feat in uploaded_files:
+                for feat in all_media:
                     new_user_parts.append(types.Part.from_uri(file_uri=feat.uri, mime_type=feat.mime_type))
-                new_user_parts.append(types.Part(text=prompt))
+
+                clean_prompt = MEDIA_REGEX.sub("", prompt).strip()
+                new_user_parts.append(types.Part(text=clean_prompt))
 
                 new_user_message = types.Content(role="user", parts=new_user_parts)
 

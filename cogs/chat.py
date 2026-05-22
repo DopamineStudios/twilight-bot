@@ -1087,7 +1087,7 @@ User prompt:
             self.message_history[identifier].append(
                 types.Content(role="model", parts=[types.Part(text=self._replace_markdown_separators(full_content))])
             )
-            self._trim_to_tokens(identifier, max_tokens=16000)
+            self._trim_to_tokens(identifier, active_model_name, gen_config, max_tokens=16000)
 
             generation_time = time.time() - start_time
             self.cooldowns[identifier] = (time.time(), (generation_time * 0.3) + 10.5)

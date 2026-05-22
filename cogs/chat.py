@@ -18,6 +18,7 @@ from dopamineframework import dopamine_commands, preconditions
 from datetime import datetime, timezone
 from pylatexenc.latex2text import LatexNodes2Text
 import unicodeitplus
+import mimetypes
 
 client = genai.Client(api_key=gemini_api_key)
 
@@ -582,6 +583,15 @@ class AICog(commands.Cog):
         async with aiohttp.ClientSession() as session:
             for att in attachments:
                 if att.content_type and not att.content_type.startswith(('video/', 'audio/')):
+
+                    mime_type = att.content_type
+
+                    if not mime_type or mime_type == "application/octet-stream":
+                        mime_type, _ = mimetypes.guess_type(att.filename)
+
+                    if not mime_type:
+                        mime_type = "application/octet-stream"
+
                     async with session.get(att.url) as resp:
                         if resp.status == 200:
                             data = await resp.read()
@@ -589,12 +599,16 @@ class AICog(commands.Cog):
                                 temp_file.write(data)
                                 temp_path = temp_file.name
 
-                            gemini_file = client.files.upload(file=temp_path, config={'display_name': att.filename})
-                            uploaded_parts.append(gemini_file)
-                            os.remove(temp_path)
+                            try:
+                                gemini_file = client.files.upload(
+                                    file=temp_path,
+                                    config={'display_name': att.filename, 'mime_type': mime_type}
+                                )
+                                uploaded_parts.append(gemini_file)
+                            finally:
+                                if os.path.exists(temp_path):
+                                    os.remove(temp_path)
         return uploaded_parts
-
-    import re
 
     async def _replace_mentions(self, text, guild):
         if not guild:

@@ -455,19 +455,25 @@ class AICog(commands.Cog):
         if identifier not in self.message_history:
             self.message_history[identifier] = []
 
-    def _count_tokens(self, history):
-        total_chars = 0
-        for m in history:
-            for part in m.parts:
-                if hasattr(part, 'text') and part.text:
-                    total_chars += len(part.text) + 20
-        return round(int(total_chars / 3.8))
-
-    def _trim_to_tokens(self, identifier, max_tokens=16000):
+    def _trim_to_tokens(self, identifier, active_model_name, gen_config,
+                        max_tokens=12000):
         if identifier not in self.message_history or not self.message_history[identifier]:
             return
 
-        while self._count_tokens(self.message_history[identifier]) > max_tokens:
+        while True:
+            try:
+                current_context = self._prepare_search_context(self.message_history[identifier])
+                token_count_resp = client.models.count_tokens(
+                    model=active_model_name,
+                    contents=current_context,
+                    config=gen_config
+                )
+                if token_count_resp.total_tokens <= max_tokens:
+                    break
+            except Exception:
+                if len(self.message_history[identifier]) <= 2:
+                    break
+
             if len(self.message_history[identifier]) >= 2:
                 self.message_history[identifier].pop(0)
                 self.message_history[identifier].pop(0)

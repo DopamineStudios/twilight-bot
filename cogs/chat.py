@@ -584,7 +584,7 @@ class AICog(commands.Cog):
             for att in attachments:
                 if att.content_type and not att.content_type.startswith(('video/', 'audio/')):
 
-                    mime_type = att.content_type
+                    mime_type = att.content_type.split(';')[0]
 
                     if not mime_type or mime_type == "application/octet-stream":
                         mime_type, _ = mimetypes.guess_type(att.filename)

@@ -28,6 +28,14 @@ EXPERT_MODEL = "models/gemma-4-26b-a4b-it"
 SEARCH_MODEL = "models/gemma-4-31b-it"
 MD_SEPARATOR = "𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖"
 MEDIA_REGEX = re.compile(r'(https?://\S+)', re.IGNORECASE)
+IMAGE_MEDIA_PATTERNS = [
+    r"giphy\.com",
+    r"tenor\.com",
+    r"imgur\.com",
+    r"pinimg\.com",
+    r"media\.giphy\.com",
+    r"i\.giphy\.com"
+]
 
 class SearchButton(discord.ui.View):
     def __init__(self, query: str):
@@ -613,6 +621,7 @@ class AICog(commands.Cog):
 
     async def _handle_remote_links(self, message: discord.Message):
         uploaded_parts = []
+
         links = MEDIA_REGEX.findall(message.content)
 
         if not links:
@@ -623,26 +632,45 @@ class AICog(commands.Cog):
                 try:
                     async with session.get(url, timeout=10) as resp:
                         if resp.status == 200:
-                            content_type = resp.content_type
+                            content_type = resp.content_type.lower()
 
-                            if content_type.startswith(('image/', 'video/')):
-                                data = await resp.read()
 
-                                ext = mimetypes.guess_extension(content_type) or ".bin"
+                    is_known_media_provider = any(
+                        re.search(pattern, url, re.IGNORECASE)
+                        for pattern in IMAGE_MEDIA_PATTERNS
+                    )
 
-                                with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
-                                    temp_file.write(data)
-                                    temp_path = temp_file.name
 
-                                try:
-                                    gemini_file = client.files.upload(
-                                        file=temp_path,
-                                        config={'display_name': url.split('/')[-1], 'mime_type': content_type}
-                                    )
-                                    uploaded_parts.append(gemini_file)
-                                finally:
-                                    if os.path.exists(temp_path):
-                                        os.remove(temp_path)
+                    if content_type.startswith(('image/', 'video/')) or is_known_media_provider:
+                        data = await resp.read()
+
+
+                    if not content_type.startswith(('image/', 'video/')):
+
+                        url_path = url.split('?')[0]
+                        guessed_mime, = mimetypes.guess_type(url_path)
+
+                        if guessed_mime and guessed_mime.startswith(('image/', 'video/')):
+                            mime_type = guessed_mime
+                        else:
+                            mime_type = "image/gif"
+                    else:
+                        mime_type = content_type
+
+                    ext = mimetypes.guess_extension(mime_type) or ".bin"
+
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
+                        temp_file.write(data)
+                    temp_path = temp_file.name
+
+                    try:
+                         gemini_file = client.files.upload(
+                             file=temp_path,
+                                config={'display_name': url.split('/')[-1], 'mime_type': mime_type})
+                         uploaded_parts.append(gemini_file)
+                    finally:
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
                 except Exception as e:
                     print(f"Failed to process remote link {url}: {e}")
 
@@ -1099,7 +1127,7 @@ User prompt:
         description="Clears Twilight's conversation history for this server."
     )
     @preconditions.permissions_preset("admin")
-    async def clear_history(self, interaction: discord.Interaction):
+    async def clear_server(self, interaction: discord.Interaction):
         if not interaction.guild:
             return await interaction.response.send_message("This command is meant to be used in servers!\nTo clear history in DMs, use `/clear dm`.", ephemeral=True)
         identifier = interaction.guild_id
@@ -1123,7 +1151,7 @@ User prompt:
         name="dm",
         description="Clears Twilight's conversation history for this DM."
     )
-    async def clear_history(self, interaction: discord.Interaction):
+    async def clear_dm(self, interaction: discord.Interaction):
         if interaction.guild:
             return await interaction.response.send_message("This command is meant to be used in DMs!\nTo clear history in servers, use `/clear server`.", ephemeral=True)
         identifier = interaction.channel_id

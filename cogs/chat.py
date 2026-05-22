@@ -876,8 +876,8 @@ User prompt:
 
                 current_context = self._prepare_search_context(self.message_history[identifier] + [new_user_message])
 
-                max_retries = 3
-                retry_delay = 2
+                max_retries = 6
+                retry_delay = 5
                 response = None
 
                 for attempt in range(max_retries):

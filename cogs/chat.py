@@ -778,6 +778,9 @@ User prompt:
         if not is_dm and not is_mentioned:
             return
 
+        now_utc = datetime.now(timezone.utc)
+        message_timestamp = now_utc.strftime("%H:%M on %d %B %Y")
+
         identifier = message.channel.id if is_dm else message.guild.id
 
         prompt = message.content
@@ -785,18 +788,22 @@ User prompt:
             prompt = prompt.replace(mention.mention, "")
 
         prompt = await self._replace_mentions(prompt, message.guild)
-        prompt = f"USER's PROMPT (User's name is {message.author.display_name}): {prompt.strip()}"
+        channel_name = self.bot.get_channel(message.channel.id) or await self.bot.fetch_channel(message.channel.id)
+        prompt = f"USER's PROMPT (User's name is {message.author.display_name}, prompt sent at {message_timestamp} in Discord channel {channel_name}): {prompt.strip()}"
 
         if message.reference and message.reference.resolved:
             ref_msg = message.reference.resolved
             quoted_content = await self._replace_mentions(ref_msg.content, message.guild)
 
+            ref_time = ref_msg.created_at.astimezone(timezone.utc).strftime("%H:%M on %d %B %Y")
+
             if ref_msg.author.id == self.bot.user.id:
-                prompt = (f"CONTEXT: The user is replying to a previous message from YOU, Twilight:\n"
-                          f"--- QUOTED MESSAGE ---\n{quoted_content}\n--- END QUOTE ---\n\n{prompt}")
+                prompt = (
+                    f"CONTEXT: The user is replying to a previous message from YOUR Discord account, Twilight, sent at {ref_time}:\n"
+                    f"--- QUOTED MESSAGE ---\n{quoted_content}\n--- END QUOTE ---\n\n{prompt}")
             else:
                 prompt = (
-                    f"CONTEXT: The following is a message from {ref_msg.author.display_name} that the user is quoting:\n"
+                    f"CONTEXT: The following is a message from {ref_msg.author.display_name} sent at {ref_time} that the user is quoting:\n"
                     f"--- QUOTED MESSAGE ---\n{quoted_content}\n--- END QUOTE ---\n\n{prompt}")
 
         if not prompt and not message.attachments:

@@ -25,7 +25,7 @@ client = genai.Client(api_key=gemini_api_key)
 JUDGE_MODEL = "models/gemma-4-26b-a4b-it"
 GENERALIST_MODEL = "models/gemma-4-26b-a4b-it"
 EXPERT_MODEL = "models/gemma-4-26b-a4b-it"
-SEARCH_MODEL = "models/gemini-flash-latest"
+SEARCH_MODEL = "models/gemma-4-31b-it"
 MD_SEPARATOR = "𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖"
 
 class SearchButton(discord.ui.View):
@@ -1013,15 +1013,22 @@ User prompt:
                 await queue_msg.edit(content=f"""Error: Google AI Studio is currently unavailable or encountered a problem. Please try again later.\n> If the error message says "500 Internal Server Error", it is an error on our AI Provider's end i.e. Google AI Studio. Google makes this error message notoriously vague on purpose - it happens seemingly at random, and it's impossible to know what even caused it. Please re-try after a few seconds.\n\nError Message:\n```{e}```""")
                 return
 
-            cleaned_user_parts = []
-            for part in new_user_parts:
-                if hasattr(part, 'text') and part.text:
-                    cleaned_user_parts.append(types.Part(text=part.text))
-                else:
-                    filename = getattr(part, 'display_name', 'Attachment')
-                    cleaned_user_parts.append(types.Part(text=f"*[User uploaded an image/file: {filename}]*"))
+            if message.attachments and uploaded_files:
+                try:
+                    desc_resp = await client.aio.models.generate_content(
+                        model=SEARCH_MODEL,
+                        contents=uploaded_files + [types.Part(
+                            text="Describe this image or file in one concise sentence for conversation history context for an AI.")]
+                    )
+                    image_context_text = f"\n*[Context: User uploaded an image or file showing: {desc_resp.text.strip()}]*"
+                except Exception:
+                    image_context_text = "\n*[Context: User uploaded an image or file]*"
+            else:
+                image_context_text = ""
 
-            self.message_history[identifier].append(types.Content(role="user", parts=cleaned_user_parts))
+            self.message_history[identifier].append(
+                types.Content(role="user", parts=[types.Part(text=prompt + image_context_text)])
+            )
 
             self.message_history[identifier].append(
                 types.Content(role="model", parts=[types.Part(text=self._replace_markdown_separators(full_content))])

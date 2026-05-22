@@ -74,3 +74,5 @@ websockets==16.0
 yarl==1.23.0
 
 openai
+unicodeitplus
+pylatexenc

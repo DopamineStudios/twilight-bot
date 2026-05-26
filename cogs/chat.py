@@ -466,7 +466,7 @@ class AICog(commands.Cog):
             self.message_history[identifier] = []
 
     def _trim_to_tokens(self, identifier, active_model_name, gen_config,
-                        max_tokens=12000):
+                        max_tokens: int):
         if identifier not in self.message_history or not self.message_history[identifier]:
             return
 
@@ -1113,7 +1113,7 @@ User prompt:
             self.message_history[identifier].append(
                 types.Content(role="model", parts=[types.Part(text=self._replace_markdown_separators(full_content))])
             )
-            self._trim_to_tokens(identifier, active_model_name, gen_config, max_tokens=16000)
+            self._trim_to_tokens(identifier, active_model_name, gen_config, max_tokens=128000)
 
             generation_time = time.time() - start_time
             self.cooldowns[identifier] = (time.time(), (generation_time * 0.3) + 10.5)

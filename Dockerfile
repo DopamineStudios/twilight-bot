@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir \
     aiohttp \
     dotenv \
     openai \
-    dopamine-framework==2.2.2.post4 \
+    beacon==3.0.0 \
     PyYAML \
     pylatexenc \
     unicodeitplus

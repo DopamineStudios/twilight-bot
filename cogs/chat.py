@@ -785,7 +785,6 @@ User prompt:
                     raise e
 
     def _matches_thinking_keyword(self, line_lower: str, keyword: str) -> bool:
-        """Phrase keywords use substring match; single tokens use word boundaries."""
         keyword = keyword.strip()
         if not keyword:
             return False
@@ -812,10 +811,20 @@ User prompt:
 
                 match_paren = re.search(r'\(([^)]+)\)', header)
                 if match_paren:
-                    return f"Analysing {match_paren.group(1)}..."
+                    content = match_paren.group(1)
+                    content = " ".join(word.capitalize() for word in content.split())
+
+                    content_words = content.split()
+                    if content_words and content_words[0].lower().endswith("ing"):
+                        return f"{content}..."
+                    return f"Analysing {content}..."
 
                 words = header.split()
                 if 1 <= len(words) <= 5 and words[0].lower() not in ('http', 'https'):
+                    header = " ".join(word.capitalize() for word in words)
+
+                    if words[0].lower().endswith("ing"):
+                        return f"{header}..."
                     return f"Processing {header}..."
 
         return "Thinking..."

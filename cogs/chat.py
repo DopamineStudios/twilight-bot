@@ -736,8 +736,7 @@ class AICog(commands.Cog):
         return sanitized_history
 
     async def _get_routing_tier(self, user_prompt, queue_msg=None):
-        sleep_time = random.uniform(0.5, 2)
-        await asyncio.sleep(sleep_time)
+
         return 'C'
         judge_prompt = f"""<system_prompt> Is this request:
 (A) Casual greeting or simple task,
@@ -917,16 +916,21 @@ User prompt:
 
                 image_analysis = False
                 try:
-                    stop_event.set()
-                    await worker_task
+
 
                     if message.attachments:
+                        try:
+                            stop_event.set()
+                            await worker_task
+                        except Exception as e:
+                            print(e)
                         target_tier = 'C'
 
                         await queue_msg.edit(content=f"## {self.loading_icon} Analysing...\n\n𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖\n\n{self.loading_dot}")
                         image_analysis = True
+                        stop_event = asyncio.Event()
+                        worker_task = asyncio.create_task(self._personality_worker(queue_msg, stop_event, mode=3))
                     else:
-                        await queue_msg.edit(content=f"## {self.loading_icon} Understanding Your Message...\n\n𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖\n\n{self.loading_dot}")
                         target_tier = await self._get_routing_tier(prompt, queue_msg)
 
                 except Exception as e:
@@ -946,19 +950,7 @@ User prompt:
                     current_model = "Google Gemma 4 26B"
                     level = "minimal" if target_tier == 'B' else "high"
                     config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level=level)
-                    if image_analysis:
-                        stop_event = asyncio.Event()
-                        worker_task = asyncio.create_task(self._personality_worker(queue_msg, stop_event, mode=3))
-                    else:
-                        await queue_msg.edit(content=f"## {self.loading_icon} Thinking...\n\n𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖\n\n{self.loading_dot}")
-                        stop_event = asyncio.Event()
-                        worker_task = asyncio.create_task(self._personality_worker(queue_msg, stop_event, mode=2))
 
-                else:
-                    current_model = "Google Gemma 4 26B"
-                    await queue_msg.edit(content=f"## {self.loading_icon} Just a sec...\n\n𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖𝄖\n\n{self.loading_dot}")
-                    stop_event = asyncio.Event()
-                    worker_task = asyncio.create_task(self._personality_worker(queue_msg, stop_event, mode=0))
 
                 now_utc = datetime.now(timezone.utc)
 

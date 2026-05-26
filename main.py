@@ -1,4 +1,4 @@
-from dopamineframework import Bot
+from beacon import Bot
 import discord
 import logging
 from logging.handlers import RotatingFileHandler

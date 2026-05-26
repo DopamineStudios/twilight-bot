@@ -14,7 +14,7 @@ from google.genai import types
 from config import system_prompt, gemini_api_key
 import random
 import asyncio
-from dopamineframework import dopamine_commands, preconditions
+from beacon import beacon_commands, preconditions
 from datetime import datetime, timezone
 from pylatexenc.latex2text import LatexNodes2Text
 import unicodeitplus
